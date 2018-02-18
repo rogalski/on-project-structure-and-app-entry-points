@@ -1,0 +1,232 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.0 Transitional//EN" "http://www.w3.org/TR/REC-html40/loose.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>On project structure and app entry points</title>
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<link rel="stylesheet" href="css/reveal.css">
+<link rel="stylesheet" href="css/theme/white.css" id="theme">
+<!-- Theme used for syntax highlighting of code --><link rel="stylesheet" href="lib/css/github.css">
+<!-- Printing and PDF exports --><script>
+			var link = document.createElement( 'link' );
+			link.rel = 'stylesheet';
+			link.type = 'text/css';
+			link.href = window.location.search.match( /print-pdf/gi ) ? 'css/print/pdf.css' : 'css/print/paper.css';
+			document.getElementsByTagName( 'head' )[0].appendChild( link );
+		</script><!--[if lt IE 9]>
+		<script src="lib/js/html5shiv.js"></script>
+		<![endif]--><style>
+			.reveal {
+				font-size: 200%
+			}
+
+			.reveal h1 {
+				font-size: 200%
+			}
+
+			.reveal pre code {
+				font-size: 140%;
+				padding: 1em;
+			}
+
+			.reveal img {
+				border: 0 !important;
+				box-shadow: none !important;
+			}
+		</style>
+</head>
+<body>
+		<div class="reveal">
+			<div class="slides">
+<section data-markdown><script type="text/template">
+# On Python project structure and app entry points
+### Łukasz Rogalski
+#### PyGda #33 lightning talk
+![](assets/pygda.png)
+</script></section><section data-markdown><script type="text/template">
+
+### Starting a project
+
+- Pick up a catchy name!
+- Our dummy project for this presentation is called `chewbacca`
+- We typically start writing a code with single script
+- Makes sense for simple cases, maybe a few dozens lines of code
+
+Structure:
+```
+project-root/
+    run_chewbacca.py
+```
+
+To launch:
+```
+$ python3 run_chewbacca.py
+```
+</script></section><section data-markdown><script type="text/template">
+
+### Code grows
+
+- Having everything in same file is just too messy
+- Let's extract separate functionalities to separate modules
+
+Structure:
+```
+project-root/
+    core.py
+    run_chewbacca.py
+    utils.py
+```
+
+Few culprits:
+- with growing file list, it may be not obvious which file in an actual entry point of application
+- common problem of shadowing built-in / third party module with files / packages in local directory
+- See [Importing installed package from script raises "AttributeError: module has no attribute" on Stack Overflow](https://stackoverflow.com/questions/36250353/importing-installed-package-from-script-raises-attributeerror-module-has-no-at) for details
+</script></section><section data-markdown><script type="text/template">
+
+### Refactor to build a _package_
+
+```
+project-root/
+    chewbacca/
+        __init__.py
+        core.py
+        utils.py
+    run_chewbacca.py
+```
+</script></section><section data-markdown><script type="text/template">
+
+### ... and add setup.py
+
+```python
+from setuptools import setup
+
+setup(
+  name="chewbacca",
+    version="0.1.0",
+    packages=["chewbacca"],
+    py_modules=["run_chewbacca"],
+    entry_points={
+        'console_scripts': [
+            'chewbacca = run_chewbacca:main',
+        ],
+  },
+)
+```
+
+`entry_points` syntax:
+- LHS: `entry_point_name`
+- RHS: `some_module.some_module:main_func`
+</script></section><section data-markdown><script type="text/template">
+
+### entry points in setup.py
+- on installation, it’ll prepare entry point in certain directory
+    - Win: `{PYTHON INTERPRETER}\Scripts\chewbacca.bat`
+    - Mac/Linux: `{PYTHON INTERPRETER}\bin\chewbacca`
+- entry point is just an `*.sh` / `*.bat` script to launch project main code within interpreter (take a look yourself!)
+- if `PATH` environment variable is configured correctly, we may launch as simply as:
+
+```
+$ chewbacca -p param -o option
+```
+</script></section><section data-markdown><script type="text/template">
+
+### Are we done?
+
+Structure:
+```
+project-root/
+    chewbacca/
+        __init__.py
+        core.py
+        utils.py
+    run_chewbacca.py
+    setup.py
+```
+
+Two concerns:
+
+1. `run_chewbacca.py` is still a dangling file outside of package directory
+2. "Nice-and-short" entry point is available only after installation. What about simple download-and-run?
+</script></section><section data-markdown><script type="text/template">
+
+### `__main__.py` to the rescue
+- we actually can tell interpreter to run _package_ instead of file
+- we just need to add a `__main__.py` file to package we want to be launchable
+
+Structure:
+```
+project-root/
+    chewbacca/
+        __init__.py
+        __main__.py
+        core.py
+        utils.py
+    setup.py
+```
+
+To launch:
+```
+$ python3 -m chewbacca -p param -o option
+$ chewbacca -p param -o option
+```
+</script></section><section data-markdown><script type="text/template">
+
+### Advantages:
+- we have 100% contained namespace for our software, none of project files does not leak outside of it
+- intuitive entry point available for packages installed both via pip and simply downloaded and extracted
+- Adresses two important use-cases:
+    - Cmdline usage for end users
+    - Importable programmatic API for power users
+
+```python
+import chewbacca
+print(chewbacca.say_hello())
+```
+</script></section><section data-markdown><script type="text/template">
+
+### Popular packages do it
+```sh
+$ python3 -m pip
+$ python3 -m tox
+$ python3 -m pytest
+```
+</script></section><section data-markdown><script type="text/template">
+
+### Things to consider
+- I’m not sure how well it’ll apply to your project...
+- But if it does, take care of it **as early as possible**
+    - Once released, you’ll have to keep backwards compatibility
+    - You do not want to completely reorganise repository of advanced project
+    - It effectively makes working working with code history much harder
+</script></section><section data-markdown><script type="text/template">
+
+# Thank you!
+</script></section><section data-markdown><script type="text/template">
+
+# Q&A
+</script></section>
+</div>
+</div>
+		<script src="lib/js/head.min.js"></script><script src="js/reveal.js"></script><script>
+			// More info https://github.com/hakimel/reveal.js#configuration
+			Reveal.initialize({
+				controls: false,
+				progress: true,
+				history: true,
+				center: true,
+				transition: 'fade', // none/fade/slide/convex/concave/zoom
+				// More info https://github.com/hakimel/reveal.js#dependencies
+				dependencies: [
+					{ src: 'lib/js/classList.js', condition: function() { return !document.body.classList; } },
+					{ src: 'plugin/markdown/marked.js', condition: function() { return !!document.querySelector( '[data-markdown]' ); } },
+					{ src: 'plugin/markdown/markdown.js', condition: function() { return !!document.querySelector( '[data-markdown]' ); } },
+					{ src: 'plugin/highlight/highlight.js', async: true, callback: function() { hljs.initHighlightingOnLoad(); } },
+					{ src: 'plugin/zoom-js/zoom.js', async: true },
+					{ src: 'plugin/notes/notes.js', async: true }
+				]
+			});
+		</script>
+</body>
+</html>
